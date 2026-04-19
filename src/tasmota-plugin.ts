@@ -55,6 +55,9 @@ export class TasmotaEngine {
   private readonly deviceManager: DeviceManager;
   private readonly logger: Logger;
   private readonly capabilities = new Map<string, TasmotaCapabilities>();
+  /** Timestamp (ms) of the last STATUS 0 request per device (backoff). */
+  private readonly lastDiscoveryRequest = new Map<string, number>();
+  private static readonly DISCOVERY_BACKOFF_MS = 30_000;
 
   constructor(
     integrationId: string,
@@ -138,6 +141,14 @@ export class TasmotaEngine {
       const value = payload.toString("utf-8").trim();
 
       if (value === "Online") {
+        // Skip STATUS request if we already know the device (capabilities cached).
+        // Otherwise Tasmota devices that disconnect/reconnect frequently (flaky ones)
+        // would trigger a STATUS request every time, spamming the broker.
+        if (this.capabilities.has(deviceTopic)) {
+          this.logger.debug({ device: deviceTopic }, "Tasmota device back online (already known)");
+          this.deviceManager.updateDeviceStatus(this.integrationId, deviceTopic, "online");
+          return;
+        }
         this.logger.info({ device: deviceTopic }, "Tasmota device online — requesting STATUS");
         this.mqtt.publish(`${this.baseTopic}/cmnd/${deviceTopic}/STATUS`, "0");
         this.mqtt.publish(`${this.baseTopic}/cmnd/${deviceTopic}/STATUS`, "11");
@@ -155,27 +166,7 @@ export class TasmotaEngine {
       if (!deviceTopic) return;
       const data = parseJson(payload);
       if (!data || typeof data !== "object") return;
-
-      const discovered = buildDiscoveredDevice(data);
-      if (!discovered) {
-        this.logger.warn({ device: deviceTopic }, "Could not build DiscoveredDevice from STATUS 0");
-        return;
-      }
-
-      // Patch sourceDeviceId on discovery: use the Tasmota topic as stable ID.
-      const withSourceId = { ...discovered, ieeeAddress: deviceTopic };
-
-      this.capabilities.set(deviceTopic, extractCapabilities(data as Record<string, unknown>));
-      this.deviceManager.upsertFromDiscovery(this.integrationId, this.integrationId, withSourceId);
-      this.deviceManager.updateDeviceStatus(this.integrationId, deviceTopic, "online");
-      this.logger.info(
-        {
-          device: deviceTopic,
-          relays: discovered.data.filter((d) => d.key.startsWith("power")).length,
-          shutters: discovered.data.filter((d) => d.key.includes("shutter")).length,
-        },
-        "Tasmota device discovered",
-      );
+      this.processStatus0(deviceTopic, data as Record<string, unknown>);
     } catch (err) {
       this.logger.error({ err, topic } as Record<string, unknown>, "STATUS0 handler error");
     }
@@ -204,10 +195,30 @@ export class TasmotaEngine {
 
   private applyStateUpdate(deviceTopic: string, payload: Buffer): void {
     const data = parseJson(payload);
-    if (!data) return;
+    if (!data || typeof data !== "object") return;
+
+    // Some Tasmota configurations publish the STATUS 0 response on stat/<device>/RESULT
+    // (when SetOption4=1) instead of stat/<device>/STATUS0. Detect the envelope by shape
+    // and treat it as a discovery response.
+    const dataObj = data as Record<string, unknown>;
+    const statusEnvelope = dataObj.Status;
+    if (
+      statusEnvelope &&
+      typeof statusEnvelope === "object" &&
+      (statusEnvelope as Record<string, unknown>).Topic
+    ) {
+      this.processStatus0(deviceTopic, dataObj);
+      return;
+    }
 
     // If we don't know this device yet, request STATUS 0 to discover it.
     if (!this.capabilities.has(deviceTopic)) {
+      const now = Date.now();
+      const lastReq = this.lastDiscoveryRequest.get(deviceTopic) ?? 0;
+      if (now - lastReq < TasmotaEngine.DISCOVERY_BACKOFF_MS) {
+        return;
+      }
+      this.lastDiscoveryRequest.set(deviceTopic, now);
       this.logger.debug(
         { device: deviceTopic },
         "State received for unknown device — requesting STATUS 0",
@@ -221,6 +232,27 @@ export class TasmotaEngine {
     if (Object.keys(parsed).length === 0) return;
 
     this.deviceManager.updateDeviceData(this.integrationId, deviceTopic, parsed);
+  }
+
+  private processStatus0(deviceTopic: string, data: Record<string, unknown>): void {
+    if (this.capabilities.has(deviceTopic)) return; // already discovered
+    const discovered = buildDiscoveredDevice(data);
+    if (!discovered) {
+      this.logger.warn({ device: deviceTopic }, "Could not build DiscoveredDevice from STATUS 0");
+      return;
+    }
+    const withSourceId = { ...discovered, ieeeAddress: deviceTopic };
+    this.capabilities.set(deviceTopic, extractCapabilities(data));
+    this.deviceManager.upsertFromDiscovery(this.integrationId, this.integrationId, withSourceId);
+    this.deviceManager.updateDeviceStatus(this.integrationId, deviceTopic, "online");
+    this.logger.info(
+      {
+        device: deviceTopic,
+        relays: discovered.data.filter((d) => d.key.startsWith("power")).length,
+        shutters: discovered.data.filter((d) => d.key.includes("shutter")).length,
+      },
+      "Tasmota device discovered",
+    );
   }
 }
 

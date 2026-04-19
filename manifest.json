@@ -2,7 +2,7 @@
   "id": "tasmota",
   "type": "integration",
   "name": "Tasmota",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Tasmota-flashed devices (Sonoff, etc.) via MQTT",
   "icon": "Power",
   "repo": "mchacher/sowel-plugin-tasmota",
