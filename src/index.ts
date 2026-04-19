@@ -131,7 +131,9 @@ class TasmotaPlugin implements IntegrationPlugin {
     const mqttUrl = this.getSetting("mqtt_url")!;
     const mqttUsername = this.getSetting("mqtt_username") || undefined;
     const mqttPassword = this.getSetting("mqtt_password") || undefined;
-    const mqttClientId = this.getSetting("mqtt_client_id") ?? "sowel-tasmota";
+    // Append a random suffix to avoid client_id collisions across restarts.
+    const baseClientId = this.getSetting("mqtt_client_id") ?? "sowel-tasmota";
+    const mqttClientId = `${baseClientId}-${Math.random().toString(36).slice(2, 8)}`;
     const baseTopic = this.getSetting("base_topic") ?? "tasmota";
 
     try {
