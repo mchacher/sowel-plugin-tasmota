@@ -83,7 +83,11 @@ export class TasmotaEngine {
     this.mqtt.subscribe(`${this.baseTopic}/stat/+/RESULT`, (topic, payload) =>
       this.onState(topic, payload),
     );
-    this.mqtt.subscribe(`${this.baseTopic}/stat/+/STATUS0`, (topic, payload) =>
+    // Tasmota response to `Status 0` comes as multiple messages:
+    //  stat/<device>/STATUS   — main info (Status.Topic, FriendlyName, Module, StatusSHT if shutters)
+    //  stat/<device>/STATUS1 … STATUS11 — one per status section
+    // The main device info is in STATUS (no number). STATUS11 contains StatusSTS (current state).
+    this.mqtt.subscribe(`${this.baseTopic}/stat/+/STATUS`, (topic, payload) =>
       this.onStatus0(topic, payload),
     );
     this.mqtt.subscribe(`${this.baseTopic}/stat/+/STATUS11`, (topic, payload) =>
@@ -162,20 +166,22 @@ export class TasmotaEngine {
 
   private onStatus0(topic: string, payload: Buffer): void {
     try {
-      const deviceTopic = this.deviceFromTopic(topic, ["stat", "STATUS0"]);
-      if (!deviceTopic) return;
+      const parts = topic.split("/");
+      if (parts.length !== 4 || parts[0] !== this.baseTopic || parts[1] !== "stat") return;
+      const deviceTopic = parts[2];
       const data = parseJson(payload);
       if (!data || typeof data !== "object") return;
       this.processStatus0(deviceTopic, data as Record<string, unknown>);
     } catch (err) {
-      this.logger.error({ err, topic } as Record<string, unknown>, "STATUS0 handler error");
+      this.logger.error({ err, topic } as Record<string, unknown>, "STATUS handler error");
     }
   }
 
   private onStatus11(topic: string, payload: Buffer): void {
     try {
-      const deviceTopic = this.deviceFromTopic(topic, ["stat", "STATUS11"]);
-      if (!deviceTopic) return;
+      const parts = topic.split("/");
+      if (parts.length !== 4 || parts[0] !== this.baseTopic || parts[1] !== "stat") return;
+      const deviceTopic = parts[2];
       this.applyStateUpdate(deviceTopic, payload);
     } catch (err) {
       this.logger.error({ err, topic } as Record<string, unknown>, "STATUS11 handler error");
