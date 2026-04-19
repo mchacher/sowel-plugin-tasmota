@@ -43,6 +43,22 @@ const STATUS0_4CH_WITH_SHUTTER = {
   },
 };
 
+// 4-relay device with shutter on relays 3+4, using SHT0 (zero-indexed).
+// Covers the Tasmota v15 convention (SHT0) AND the case where shutter uses the LAST pair of relays.
+// (Tests ensure the plugin expose power1/power2 and hide power3/power4 behind the shutter.)
+const STATUS0_4CH_SHUTTER_ON_3_4 = {
+  Status: {
+    Module: 23,
+    DeviceName: "DEV",
+    FriendlyName: ["R1", "R2", "R3", "R4"],
+    Topic: "DEV",
+    Power: "0000",
+  },
+  StatusSHT: {
+    SHT0: { Relay1: 3, Relay2: 4, Open: 300, Close: 300, Mode: "1" },
+  },
+};
+
 // ============================================================
 // extractCapabilities
 // ============================================================
@@ -68,6 +84,13 @@ describe("extractCapabilities", () => {
     expect([...caps.shutterRelays].sort()).toEqual([1, 2]);
     expect(caps.shutters).toEqual([1]);
   });
+
+  it("detects shutter on relays 3+4 with zero-indexed SHT0 (Tasmota v15 real-world)", () => {
+    const caps = extractCapabilities(STATUS0_4CH_SHUTTER_ON_3_4);
+    expect(caps.relayCount).toBe(4);
+    expect([...caps.shutterRelays].sort()).toEqual([3, 4]);
+    expect(caps.shutters).toEqual([0]);
+  });
 });
 
 // ============================================================
@@ -92,6 +115,21 @@ describe("buildDiscoveredDevice", () => {
     expect(dd!.data).toHaveLength(4);
     expect(dd!.data.map((d) => d.key)).toEqual(["power1", "power2", "power3", "power4"]);
     expect(dd!.orders).toHaveLength(4);
+  });
+
+  it("builds device for 4CH Pro with shutter on relays 3+4 (SHT0, Tasmota v15)", () => {
+    const dd = buildDiscoveredDevice(STATUS0_4CH_SHUTTER_ON_3_4);
+    expect(dd).not.toBeNull();
+    // Only non-shutter relays exposed as switches: power1, power2 (R1, R2).
+    expect(dd!.data).toHaveLength(3);
+    const dataKeys = dd!.data.map((d) => d.key).sort();
+    expect(dataKeys).toEqual(["power1", "power2", "shutter_position"]);
+    // Shutter-absorbed relays (3, 4) NOT exposed as separate switches.
+    expect(dd!.data.find((d) => d.key === "power3")).toBeUndefined();
+    expect(dd!.data.find((d) => d.key === "power4")).toBeUndefined();
+    const orderKeys = dd!.orders.map((o) => o.key).sort();
+    expect(orderKeys).toEqual(["power1", "power2", "shutter_position", "shutter_state"]);
+    expect(dd!.friendlyName).toBe("DEV");
   });
 
   it("builds device for 4CH Pro with shutter (absorbs relays 1+2)", () => {
@@ -191,6 +229,16 @@ describe("parseStatePayload", () => {
       StatusSTS: { POWER1: "ON", Shutter1: { Position: 75 } },
     });
     expect(result).toEqual({ power1: "ON", shutter_position: 75 });
+  });
+
+  it("unwraps STATUS10 (StatusSNS) envelope for shutter state", () => {
+    const result = parseStatePayload({
+      StatusSNS: {
+        Time: "2026-04-19T09:57:42",
+        Shutter1: { Position: 100, Direction: 0, Target: 100, Tilt: 0 },
+      },
+    });
+    expect(result).toEqual({ shutter_position: 100 });
   });
 
   it("returns empty object for null/invalid input", () => {

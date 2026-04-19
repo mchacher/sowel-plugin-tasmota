@@ -58,6 +58,17 @@ export class TasmotaEngine {
   /** Timestamp (ms) of the last STATUS 0 request per device (backoff). */
   private readonly lastDiscoveryRequest = new Map<string, number>();
   private static readonly DISCOVERY_BACKOFF_MS = 30_000;
+  /**
+   * Buffer for STATUS 0 responses which Tasmota splits across multiple topics:
+   *   stat/<device>/STATUS    → { Status: {...} }       (core info)
+   *   stat/<device>/STATUS13  → { StatusSHT: {...} }    (shutter config, if any)
+   * We merge them and emit a single DiscoveredDevice after a short idle period.
+   */
+  private readonly pendingDiscovery = new Map<
+    string,
+    { payload: Record<string, unknown>; timer: ReturnType<typeof setTimeout> }
+  >();
+  private static readonly DISCOVERY_BUFFER_MS = 800;
 
   constructor(
     integrationId: string,
@@ -84,11 +95,19 @@ export class TasmotaEngine {
       this.onState(topic, payload),
     );
     // Tasmota response to `Status 0` comes as multiple messages:
-    //  stat/<device>/STATUS   — main info (Status.Topic, FriendlyName, Module, StatusSHT if shutters)
-    //  stat/<device>/STATUS1 … STATUS11 — one per status section
-    // The main device info is in STATUS (no number). STATUS11 contains StatusSTS (current state).
+    //  stat/<device>/STATUS    → { Status: {...} }     — core info (Topic, FriendlyName, Module)
+    //  stat/<device>/STATUS10  → { StatusSNS: {...} }  — sensors + shutter position
+    //  stat/<device>/STATUS11  → { StatusSTS: {...} }  — current state (POWER)
+    //  stat/<device>/STATUS13  → { StatusSHT: {...} }  — shutter config (if shutters exist)
+    // We buffer STATUS + STATUS13 for full device discovery (need both).
     this.mqtt.subscribe(`${this.baseTopic}/stat/+/STATUS`, (topic, payload) =>
-      this.onStatus0(topic, payload),
+      this.onDiscoveryMessage(topic, payload),
+    );
+    this.mqtt.subscribe(`${this.baseTopic}/stat/+/STATUS13`, (topic, payload) =>
+      this.onDiscoveryMessage(topic, payload),
+    );
+    this.mqtt.subscribe(`${this.baseTopic}/stat/+/STATUS10`, (topic, payload) =>
+      this.onStatus11(topic, payload),
     );
     this.mqtt.subscribe(`${this.baseTopic}/stat/+/STATUS11`, (topic, payload) =>
       this.onStatus11(topic, payload),
@@ -164,16 +183,33 @@ export class TasmotaEngine {
     }
   }
 
-  private onStatus0(topic: string, payload: Buffer): void {
+  /**
+   * Accumulate STATUS + STATUS13 messages (and any future STATUS<N> used for discovery)
+   * and emit a single processStatus0 call once messages settle.
+   */
+  private onDiscoveryMessage(topic: string, payload: Buffer): void {
     try {
       const parts = topic.split("/");
       if (parts.length !== 4 || parts[0] !== this.baseTopic || parts[1] !== "stat") return;
       const deviceTopic = parts[2];
       const data = parseJson(payload);
       if (!data || typeof data !== "object") return;
-      this.processStatus0(deviceTopic, data as Record<string, unknown>);
+
+      let pending = this.pendingDiscovery.get(deviceTopic);
+      if (pending) {
+        clearTimeout(pending.timer);
+      } else {
+        pending = { payload: {}, timer: null as never };
+      }
+      Object.assign(pending.payload, data as Record<string, unknown>);
+      pending.timer = setTimeout(() => {
+        const finalPayload = this.pendingDiscovery.get(deviceTopic)?.payload;
+        this.pendingDiscovery.delete(deviceTopic);
+        if (finalPayload) this.processStatus0(deviceTopic, finalPayload);
+      }, TasmotaEngine.DISCOVERY_BUFFER_MS);
+      this.pendingDiscovery.set(deviceTopic, pending);
     } catch (err) {
-      this.logger.error({ err, topic } as Record<string, unknown>, "STATUS handler error");
+      this.logger.error({ err, topic } as Record<string, unknown>, "Discovery handler error");
     }
   }
 

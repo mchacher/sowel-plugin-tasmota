@@ -177,10 +177,11 @@ export function parseStatePayload(
 ): Record<string, unknown> {
   if (!payload || typeof payload !== "object") return {};
 
-  // Unwrap STATUS11 envelope
-  const obj = (payload as Record<string, unknown>).StatusSTS
-    ? ((payload as Record<string, unknown>).StatusSTS as Record<string, unknown>)
-    : (payload as Record<string, unknown>);
+  // Unwrap STATUS11 (StatusSTS) or STATUS10 (StatusSNS) envelopes
+  const root = payload as Record<string, unknown>;
+  const obj = (root.StatusSTS as Record<string, unknown> | undefined)
+    ?? (root.StatusSNS as Record<string, unknown> | undefined)
+    ?? root;
 
   const result: Record<string, unknown> = {};
   const shutterCount = caps?.shutters.length ?? 0;
