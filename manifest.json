@@ -1,0 +1,47 @@
+{
+  "id": "tasmota",
+  "type": "integration",
+  "name": "Tasmota",
+  "version": "1.0.0",
+  "description": "Tasmota-flashed devices (Sonoff, etc.) via MQTT",
+  "icon": "Power",
+  "repo": "mchacher/sowel-plugin-tasmota",
+  "author": "mchacher",
+  "sowelVersion": ">=1.2.12",
+  "settings": [
+    {
+      "key": "mqtt_url",
+      "label": "MQTT Broker URL",
+      "type": "text",
+      "required": true,
+      "placeholder": "mqtt://localhost:1883"
+    },
+    {
+      "key": "mqtt_username",
+      "label": "MQTT Username",
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "mqtt_password",
+      "label": "MQTT Password",
+      "type": "password",
+      "required": false
+    },
+    {
+      "key": "mqtt_client_id",
+      "label": "MQTT Client ID",
+      "type": "text",
+      "required": false,
+      "defaultValue": "sowel-tasmota"
+    },
+    {
+      "key": "base_topic",
+      "label": "Tasmota Base Topic",
+      "type": "text",
+      "required": false,
+      "defaultValue": "tasmota"
+    }
+  ],
+  "apiVersion": 2
+}
