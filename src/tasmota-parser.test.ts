@@ -78,7 +78,7 @@ describe("buildDiscoveredDevice", () => {
   it("builds device for Sonoff Mini (1 relay, no shutter)", () => {
     const dd = buildDiscoveredDevice(STATUS0_MINI);
     expect(dd).not.toBeNull();
-    expect(dd!.friendlyName).toBe("Radiateur SDB");
+    expect(dd!.friendlyName).toBe("SONOFF_MINI_RADIATEUR_SDB");
     expect(dd!.data).toHaveLength(1);
     expect(dd!.data[0].key).toBe("power1");
     expect(dd!.orders).toHaveLength(1);

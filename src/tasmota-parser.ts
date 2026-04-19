@@ -96,22 +96,11 @@ export function buildDiscoveredDevice(status0: unknown): DiscoveredDevice | null
   const topic = typeof statusObj.Topic === "string" ? statusObj.Topic : null;
   if (!topic) return null;
 
-  const friendlyNames = Array.isArray(statusObj.FriendlyName)
-    ? (statusObj.FriendlyName as string[])
-    : [];
-  const deviceNameRaw =
-    typeof statusObj.DeviceName === "string" ? statusObj.DeviceName : null;
-
-  // For single-relay devices, FriendlyName[0] is the natural device label.
-  // For multi-relay devices, FriendlyName[] contains per-relay labels, so prefer DeviceName.
-  let deviceName: string;
-  if (friendlyNames.length === 1 && typeof friendlyNames[0] === "string") {
-    deviceName = friendlyNames[0];
-  } else if (deviceNameRaw) {
-    deviceName = deviceNameRaw;
-  } else {
-    deviceName = topic;
-  }
+  // Always use the Tasmota Topic as the DiscoveredDevice friendlyName.
+  // Sowel uses friendlyName as sourceDeviceId (stable identifier), which must match
+  // the Tasmota MQTT topic so order dispatch publishes to the right cmnd/<topic>/... path.
+  // Users can rename the device in Sowel UI afterwards.
+  const deviceName: string = topic;
 
   const caps = extractCapabilities(s0);
 
