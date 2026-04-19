@@ -114,7 +114,7 @@ export function buildDiscoveredDevice(status0: unknown): DiscoveredDevice | null
     data.push({
       key,
       type: "enum",
-      category: "generic",
+      category: "light_state",
       enumValues: ["ON", "OFF"],
     });
     orders.push({
@@ -132,7 +132,7 @@ export function buildDiscoveredDevice(status0: unknown): DiscoveredDevice | null
     data.push({
       key: posKey,
       type: "number",
-      category: "position",
+      category: "shutter_position",
       unit: "%",
     });
     orders.push({
