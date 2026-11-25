@@ -2,7 +2,7 @@
   "id": "tasmota",
   "type": "integration",
   "name": "Tasmota",
-  "version": "1.0.7",
+  "version": "1.1.0",
   "description": "Tasmota-flashed devices (Sonoff, etc.) via MQTT",
   "icon": "Power",
   "repo": "mchacher/sowel-plugin-tasmota",
@@ -14,7 +14,8 @@
       "label": "MQTT Broker URL",
       "type": "text",
       "required": true,
-      "placeholder": "mqtt://localhost:1883"
+      "placeholder": "mqtt://host.docker.internal:1883",
+      "defaultValue": "mqtt://host.docker.internal:1883"
     },
     {
       "key": "mqtt_username",

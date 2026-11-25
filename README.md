@@ -23,7 +23,7 @@ No additional Tasmota configuration is required (no `SetOption19`, no HA discove
 
 | Key              | Required | Default            | Description                   |
 | ---------------- | :------: | ------------------ | ----------------------------- |
-| `mqtt_url`       |    ✓     | —                  | Broker URL (`mqtt://host:port`) |
+| `mqtt_url`       |    ✓     | `mqtt://host.docker.internal:1883` | Broker URL (`mqtt://host:port`) |
 | `mqtt_username`  |          | —                  | Broker auth username          |
 | `mqtt_password`  |          | —                  | Broker auth password          |
 | `mqtt_client_id` |          | `sowel-tasmota`    | MQTT client ID                |
